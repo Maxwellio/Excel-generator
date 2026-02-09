@@ -187,7 +187,7 @@ public ResponseEntity<byte[]> downloadFittingReport(@RequestParam("id") Long id)
 }
 ```
 
-### Пример 3: Hydrotest Report (вертикальный)
+### Пример 3: Hydrotest Report (вертикальный, одна таблица)
 
 ```java
 @GetMapping("/downloadReportHydro")
@@ -219,6 +219,53 @@ public ResponseEntity<byte[]> downloadHydrotestReport(@RequestParam("id") Long i
     }
 }
 ```
+
+### Пример 4: Несколько вертикальных таблиц
+
+```java
+@GetMapping("/downloadMultiVerticalReport")
+public ResponseEntity<byte[]> downloadMultiVerticalReport(@RequestParam("id") Long id) {
+    try {
+        String itemName = jdbcTemplate.queryForObject(
+            "SELECT name FROM items WHERE id = ?", String.class, id);
+        
+        // Первая таблица
+        List<Map<String, Object>> data1 = jdbcTemplate.queryForList(
+            "SELECT parameter, value, unit FROM test1 WHERE item_id = ?", id);
+        
+        VerticalTablePrintRequest table1 = VerticalTablePrintRequest.builder()
+            .tableName(itemName + " - Test 1")
+            .startCellName("start_cell")
+            .data(data1)
+            .columnKeys(Arrays.asList("parameter", "value", "unit"))
+            .build();
+        
+        // Вторая таблица (автоматически под первой)
+        List<Map<String, Object>> data2 = jdbcTemplate.queryForList(
+            "SELECT parameter, value, unit FROM test2 WHERE item_id = ?", id);
+        
+        VerticalTablePrintRequest table2 = VerticalTablePrintRequest.builder()
+            .tableName(itemName + " - Test 2")
+            .data(data2)
+            .columnKeys(Arrays.asList("parameter", "value", "unit"))
+            .build();
+        
+        // Генерация отчета с несколькими вертикальными таблицами
+        byte[] reportBytes = excelReportService.generateMultiVerticalReport(
+            "templates/template2.xlsx",
+            Arrays.asList(table1, table2),
+            "Templates"
+        );
+        
+        return createExcelResponse(reportBytes, "MultiVertical_Report_" + id + ".xlsx");
+        
+    } catch (Exception e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    }
+}
+```
+
+**Подробное руководство:** [VERTICAL_MULTI_TABLE_GUIDE.md](VERTICAL_MULTI_TABLE_GUIDE.md)
 
 ---
 

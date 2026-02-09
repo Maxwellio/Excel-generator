@@ -2,6 +2,7 @@ package com.example.excelreport.service;
 
 import com.example.excelreport.model.ReportConfig;
 import com.example.excelreport.model.TablePrintRequest;
+import com.example.excelreport.model.VerticalTablePrintRequest;
 import com.example.excelreport.util.ExcelUtils;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -115,6 +116,75 @@ public class ExcelReportService {
     }
 
     /**
+     * Универсальный метод генерации отчета с несколькими вертикальными таблицами
+     * Таблицы размещаются одна под другой
+     */
+    public byte[] generateMultiVerticalReport(String templatePath, List<VerticalTablePrintRequest> tables,
+                                              String templateSheetName) throws IOException {
+        try (InputStream templateStream = new ClassPathResource(templatePath).getInputStream();
+             Workbook workbook = new XSSFWorkbook(templateStream)) {
+            
+            Sheet workSheet = workbook.getSheetAt(0);
+            int currentRow = 0;
+            int currentCol = 0;
+            
+            // Обрабатываем каждую таблицу
+            for (int i = 0; i < tables.size(); i++) {
+                VerticalTablePrintRequest table = tables.get(i);
+                
+                // Устанавливаем название таблицы
+                if (table.getTableName() != null) {
+                    ExcelUtils.setNamedCellValue(workbook, "name", table.getTableName());
+                }
+                
+                // Определяем стартовую позицию
+                int startRow;
+                int startCol;
+                
+                if (table.getStartCellName() != null) {
+                    // Используем именованную ячейку
+                    Cell startCell = ExcelUtils.getNamedCell(workbook, table.getStartCellName());
+                    if (startCell == null) {
+                        throw new IllegalArgumentException("Start cell not found: " + table.getStartCellName());
+                    }
+                    workSheet = startCell.getSheet();
+                    startRow = startCell.getRowIndex();
+                    startCol = startCell.getColumnIndex();
+                } else if (table.getStartRow() != null && table.getStartColumn() != null) {
+                    // Используем координаты
+                    startRow = table.getStartRow();
+                    startCol = table.getStartColumn();
+                } else {
+                    // Используем текущую позицию (под предыдущей таблицей)
+                    startRow = currentRow;
+                    startCol = currentCol;
+                }
+                
+                // Печатаем таблицу
+                int rowsUsed = printVerticalTable(workSheet, table.getData(), table.getColumnKeys(), startRow, startCol);
+                
+                // Обновляем текущую позицию для следующей таблицы
+                // Добавляем отступ между таблицами (2 строки)
+                currentRow = startRow + rowsUsed + 2;
+                currentCol = startCol;
+            }
+            
+            // Пересчитываем формулы
+            ExcelUtils.recalculateFormulas(workbook);
+            
+            // Удаляем лист с шаблонами если указано
+            if (templateSheetName != null) {
+                ExcelUtils.removeSheet(workbook, templateSheetName);
+            }
+            
+            // Записываем в ByteArray
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    /**
      * Печать одной горизонтальной таблицы
      * @return номер следующей свободной строки
      */
@@ -186,6 +256,30 @@ public class ExcelReportService {
             }
             currentRow++;
         }
+    }
+
+    /**
+     * Печать одной вертикальной таблицы
+     * @return количество использованных строк
+     */
+    private int printVerticalTable(Sheet sheet, List<Map<String, Object>> data, 
+                                   List<String> columnKeys, int startRow, int startCol) {
+        if (data == null || data.isEmpty()) {
+            return 0;
+        }
+        
+        int currentRow = startRow;
+        
+        for (Map<String, Object> rowData : data) {
+            for (int i = 0; i < columnKeys.size(); i++) {
+                String key = columnKeys.get(i);
+                Cell cell = ExcelUtils.getOrCreateCell(sheet, currentRow, startCol + i);
+                ExcelUtils.fillCellFromMap(cell, rowData, key);
+            }
+            currentRow++;
+        }
+        
+        return currentRow - startRow;  // Возвращаем количество использованных строк
     }
 
     /**

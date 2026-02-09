@@ -9,7 +9,8 @@
 - ✅ Копирование стилей, границ, объединенных ячеек
 - ✅ Работа с именованными диапазонами и ячейками
 - ✅ Автоматический пересчет формул
-- ✅ Поддержка нескольких таблиц в одном отчете
+- ✅ Поддержка нескольких таблиц в одном отчете (горизонтальная и вертикальная ориентация)
+- ✅ Гибкое позиционирование вертикальных таблиц
 - ✅ REST API для скачивания отчетов
 - ✅ Универсальные методы для адаптации под любые шаблоны
 - ✅ Совместимость с Java 11+
@@ -224,7 +225,7 @@ byte[] reportBytes = excelReportService.generateVerticalReport(
 );
 ```
 
-### Генерация отчета с несколькими таблицами
+### Генерация отчета с несколькими таблицами (горизонтальная ориентация)
 
 ```java
 // Создать несколько таблиц
@@ -254,6 +255,34 @@ byte[] reportBytes = excelReportService.generateMultiTableReport(
     true  // Удалить лист с шаблонами
 );
 ```
+
+### Генерация отчета с несколькими таблицами (вертикальная ориентация)
+
+```java
+// Создать несколько вертикальных таблиц
+VerticalTablePrintRequest table1 = VerticalTablePrintRequest.builder()
+    .tableName("Section 1")
+    .startCellName("start_cell")  // Начало от именованной ячейки
+    .data(data1)
+    .columnKeys(columnKeys)
+    .build();
+
+VerticalTablePrintRequest table2 = VerticalTablePrintRequest.builder()
+    .tableName("Section 2")
+    // Не указываем startCellName - таблица будет под первой
+    .data(data2)
+    .columnKeys(columnKeys)
+    .build();
+
+// Сгенерировать отчет с несколькими вертикальными таблицами
+byte[] reportBytes = excelReportService.generateMultiVerticalReport(
+    "templates/template2.xlsx",
+    Arrays.asList(table1, table2),
+    "Templates"
+);
+```
+
+**Подробное руководство:** [VERTICAL_MULTI_TABLE_GUIDE.md](VERTICAL_MULTI_TABLE_GUIDE.md)
 
 ### Упрощенная генерация
 

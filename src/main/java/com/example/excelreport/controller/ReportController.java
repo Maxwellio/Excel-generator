@@ -1,6 +1,7 @@
 package com.example.excelreport.controller;
 
 import com.example.excelreport.model.TablePrintRequest;
+import com.example.excelreport.model.VerticalTablePrintRequest;
 import com.example.excelreport.service.ExcelReportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -138,6 +139,61 @@ public class ReportController {
             
         } catch (Exception e) {
             log.error("Error generating Hydrotest report for id: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Скачать отчет с несколькими вертикальными таблицами
+     * GET /api/downloadReportMultiVertical?id=123
+     * ПРИМЕР использования нескольких вертикальных таблиц
+     */
+    @GetMapping("/downloadReportMultiVertical")
+    public ResponseEntity<byte[]> downloadMultiVerticalReport(@RequestParam("id") Long id) {
+        try {
+            log.info("Generating Multi-Vertical report for id: {}", id);
+            
+            String itemName = reportDataService.getItemName(id);
+            
+            // Первая вертикальная таблица
+            List<Map<String, Object>> data1 = reportDataService.getHydrotestData(id);
+            VerticalTablePrintRequest table1 = VerticalTablePrintRequest.builder()
+                .tableName(itemName + " - Part 1")
+                .startCellName("start_cell")  // Используем именованную ячейку
+                .data(data1)
+                .columnKeys(reportDataService.getHydrotestColumnKeys())
+                .build();
+            
+            // Вторая вертикальная таблица (будет размещена под первой)
+            List<Map<String, Object>> data2 = reportDataService.getHydrotestData(id);
+            VerticalTablePrintRequest table2 = VerticalTablePrintRequest.builder()
+                .tableName(itemName + " - Part 2")
+                // startCellName не указан - таблица будет размещена под предыдущей
+                .data(data2)
+                .columnKeys(reportDataService.getHydrotestColumnKeys())
+                .build();
+            
+            // Третья таблица с явным указанием координат
+            List<Map<String, Object>> data3 = reportDataService.getHydrotestData(id);
+            VerticalTablePrintRequest table3 = VerticalTablePrintRequest.builder()
+                .tableName(itemName + " - Part 3")
+                .startRow(20)       // Явно указываем строку
+                .startColumn(5)     // Явно указываем колонку
+                .data(data3)
+                .columnKeys(reportDataService.getHydrotestColumnKeys())
+                .build();
+            
+            // Генерируем отчет с несколькими вертикальными таблицами
+            byte[] reportBytes = excelReportService.generateMultiVerticalReport(
+                "templates/template2.xlsx",
+                java.util.Arrays.asList(table1, table2, table3),
+                "Templates"
+            );
+            
+            return createExcelResponse(reportBytes, "MultiVertical_Report_" + id + ".xlsx");
+            
+        } catch (Exception e) {
+            log.error("Error generating Multi-Vertical report for id: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
