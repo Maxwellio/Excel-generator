@@ -86,7 +86,7 @@ public class MyReportService {
         // Генерируем отчет
         return excelReportService.generateHorizontalReport(
             "templates/template1.xlsx",
-            List.of(table),
+            Collections.singletonList(table),
             "Templates"
         );
     }
@@ -113,7 +113,7 @@ public byte[] generateFittingReport(Long itemId) throws IOException {
     
     return excelReportService.generateHorizontalReport(
         "templates/template1.xlsx",
-        List.of(table),
+        Collections.singletonList(table),
         "Templates"
     );
 }
@@ -303,7 +303,7 @@ public class ReportController {
             
             byte[] reportBytes = excelReportService.generateHorizontalReport(
                 "templates/custom_template.xlsx",
-                List.of(table),
+                Collections.singletonList(table),
                 "Templates"
             );
             
@@ -469,7 +469,7 @@ class ExcelReportServiceTest {
         
         byte[] result = excelReportService.generateHorizontalReport(
             "templates/test_template.xlsx",
-            List.of(table),
+            Collections.singletonList(table),
             "Templates"
         );
         

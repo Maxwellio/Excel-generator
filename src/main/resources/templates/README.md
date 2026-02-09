@@ -85,7 +85,7 @@ TablePrintRequest table = TablePrintRequest.builder()
 
 byte[] report = excelReportService.generateHorizontalReport(
     "templates/template1.xlsx",
-    List.of(table),
+    Collections.singletonList(table),
     "Templates"
 );
 

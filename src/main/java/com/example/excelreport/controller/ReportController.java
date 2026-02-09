@@ -2,29 +2,35 @@ package com.example.excelreport.controller;
 
 import com.example.excelreport.model.TablePrintRequest;
 import com.example.excelreport.service.ExcelReportService;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.IOException;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 /**
  * REST контроллер для скачивания Excel отчетов
+ * ПРИМЕР - адаптируйте под свой проект
+ * Совместимость: Java 11+
  */
 @RestController
 @RequestMapping("/api")
-@RequiredArgsConstructor
-@Slf4j
 public class ReportController {
+    
+    private static final Logger log = LoggerFactory.getLogger(ReportController.class);
 
-    private final ExcelReportService excelReportService;
-    private final ReportDataService reportDataService;
+    @Autowired
+    private ExcelReportService excelReportService;
+    
+    @Autowired
+    private ReportDataService reportDataService;
 
     /**
      * Скачать отчет Substitute
@@ -53,7 +59,7 @@ public class ReportController {
             // Генерируем отчет
             byte[] reportBytes = excelReportService.generateHorizontalReport(
                 "templates/template1.xlsx",
-                List.of(tableRequest),
+                Collections.singletonList(tableRequest),
                 "Templates"
             );
             
@@ -92,7 +98,7 @@ public class ReportController {
             // Генерируем отчет
             byte[] reportBytes = excelReportService.generateHorizontalReport(
                 "templates/template1.xlsx",
-                List.of(tableRequest),
+                Collections.singletonList(tableRequest),
                 "Templates"
             );
             

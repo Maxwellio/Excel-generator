@@ -3,26 +3,30 @@ package com.example.excelreport.service;
 import com.example.excelreport.model.ReportConfig;
 import com.example.excelreport.model.TablePrintRequest;
 import com.example.excelreport.util.ExcelUtils;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Сервис для генерации Excel отчетов
  * Все методы универсальны и могут использоваться для различных шаблонов
+ * Совместимость: Java 11+
  */
 @Service
-@Slf4j
 public class ExcelReportService {
+    
+    private static final Logger log = LoggerFactory.getLogger(ExcelReportService.class);
 
     /**
      * Универсальный метод генерации отчета с горизонтальной ориентацией
@@ -238,7 +242,7 @@ public class ExcelReportService {
             
             return generateHorizontalReport(
                 config.getTemplateName(), 
-                List.of(table), 
+                Collections.singletonList(table), 
                 config.getTemplateSheetName()
             );
         } else {

@@ -12,14 +12,36 @@
 - ✅ Поддержка нескольких таблиц в одном отчете
 - ✅ REST API для скачивания отчетов
 - ✅ Универсальные методы для адаптации под любые шаблоны
+- ✅ Совместимость с Java 11+
+- ✅ Легкая интеграция в существующие проекты с jdbcTemplate
 
 ## Требования
 
-- Java 17+
+- Java 11+
 - Maven 3.6+
 - Apache POI 5.2.3
+- Spring Boot 2.7+ (для примеров, но можно использовать и без Spring Boot)
 
-## Установка
+## Быстрый старт
+
+### Вариант 1: Интеграция в существующий проект
+
+Если у вас уже есть проект с jdbcTemplate и endpoints:
+
+1. **Скопируйте 3 файла** в ваш проект:
+   - `ExcelUtils.java`
+   - `ExcelReportService.java`
+   - `TablePrintRequest.java`
+
+2. **Добавьте зависимость** Apache POI в `pom.xml`
+
+3. **Используйте в ваших endpoints**
+
+**→ Подробная инструкция: [QUICK_START.md](QUICK_START.md)**
+
+**→ Какие файлы копировать: [COPY_THESE_FILES.md](COPY_THESE_FILES.md)**
+
+### Вариант 2: Запуск как отдельное приложение
 
 ```bash
 # Клонировать репозиторий
@@ -94,6 +116,55 @@ GET /api/downloadReportHydro?id={id}
 
 ## Использование
 
+### Быстрый пример с jdbcTemplate
+
+```java
+@RestController
+public class ReportController {
+    
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+    
+    @Autowired
+    private ExcelReportService excelReportService;
+    
+    @GetMapping("/api/downloadReportSub")
+    public ResponseEntity<byte[]> downloadReport(@RequestParam("id") Long id) {
+        // 1. Получить данные из БД
+        List<Map<String, Object>> data = jdbcTemplate.queryForList(
+            "SELECT position, part_number, name, quantity, price " +
+            "FROM substitute_parts WHERE item_id = ?", id);
+        
+        String itemName = jdbcTemplate.queryForObject(
+            "SELECT name FROM items WHERE id = ?", String.class, id);
+        
+        // 2. Создать запрос на печать
+        TablePrintRequest table = TablePrintRequest.builder()
+            .tableName(itemName)
+            .headerRangeName("substitute_header")
+            .rowRangeName("substitute_row")
+            .data(data)
+            .columnKeys(Arrays.asList("position", "part_number", "name", "quantity", "price"))
+            .includeSumRow(true)
+            .build();
+        
+        // 3. Сгенерировать отчет
+        byte[] report = excelReportService.generateHorizontalReport(
+            "templates/template1.xlsx",
+            Collections.singletonList(table),
+            "Templates"
+        );
+        
+        // 4. Вернуть файл
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.parseMediaType(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
+        headers.setContentDispositionFormData("attachment", "report.xlsx");
+        return new ResponseEntity<>(report, headers, HttpStatus.OK);
+    }
+}
+```
+
 ### Настройка шаблонов
 
 1. Создайте Excel файл с двумя листами:
@@ -134,7 +205,7 @@ TablePrintRequest table = TablePrintRequest.builder()
 // Сгенерировать отчет
 byte[] reportBytes = excelReportService.generateHorizontalReport(
     "templates/template1.xlsx",
-    List.of(table),
+    Collections.singletonList(table),
     "Templates"
 );
 ```
@@ -248,7 +319,7 @@ public ResponseEntity<byte[]> downloadCustomReport(@RequestParam("id") Long id) 
     
     byte[] reportBytes = excelReportService.generateHorizontalReport(
         "templates/custom_template.xlsx",
-        List.of(table),
+        Collections.singletonList(table),
         "Templates"
     );
     
