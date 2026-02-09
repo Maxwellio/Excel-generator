@@ -2,6 +2,7 @@ package com.example.excelreport.controller;
 
 import com.example.excelreport.model.TablePrintRequest;
 import com.example.excelreport.model.VerticalTablePrintRequest;
+import com.example.excelreport.model.UniversalTablePrintRequest;
 import com.example.excelreport.service.ExcelReportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -194,6 +195,68 @@ public class ReportController {
             
         } catch (Exception e) {
             log.error("Error generating Multi-Vertical report for id: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * УНИВЕРСАЛЬНЫЙ отчет с несколькими таблицами разных ориентаций
+     * GET /api/downloadUniversalReport?id=123
+     * РЕКОМЕНДУЕТСЯ для новых проектов - один метод для всех типов таблиц
+     */
+    @GetMapping("/downloadUniversalReport")
+    public ResponseEntity<byte[]> downloadUniversalReport(@RequestParam("id") Long id) {
+        try {
+            log.info("Generating Universal report for id: {}", id);
+            
+            String itemName = reportDataService.getItemName(id);
+            
+            // Таблица 1: Горизонтальная (Substitute)
+            List<Map<String, Object>> substituteData = reportDataService.getSubstituteData(id);
+            UniversalTablePrintRequest table1 = UniversalTablePrintRequest.builder()
+                .tableName(itemName + " - Substitute")
+                .orientation(UniversalTablePrintRequest.TableOrientation.HORIZONTAL) // Можно не указывать - по умолчанию
+                .headerRangeName("substitute_header")
+                .rowRangeName("substitute_row")
+                .data(substituteData)
+                .columnKeys(reportDataService.getSubstituteColumnKeys())
+                .includeSumCell(true)  // Добавить sum ячейку под таблицей
+                .build();
+            
+            // Таблица 2: Горизонтальная (Fitting)
+            List<Map<String, Object>> fittingData = reportDataService.getFittingData(id);
+            UniversalTablePrintRequest table2 = UniversalTablePrintRequest.builder()
+                .tableName(itemName + " - Fitting")
+                // orientation не указана - будет HORIZONTAL по умолчанию
+                .headerRangeName("fitting_header")
+                .rowRangeName("fitting_row")
+                .data(fittingData)
+                .columnKeys(reportDataService.getFittingColumnKeys())
+                .includeSumCell(false)
+                .build();
+            
+            // Таблица 3: Вертикальная (Hydrotest)
+            List<Map<String, Object>> hydroData = reportDataService.getHydrotestData(id);
+            UniversalTablePrintRequest table3 = UniversalTablePrintRequest.builder()
+                .tableName(itemName + " - Hydrotest")
+                .orientation(UniversalTablePrintRequest.TableOrientation.VERTICAL) // Вертикальная
+                .startCellName("start_cell")  // Начать от именованной ячейки
+                .data(hydroData)
+                .columnKeys(reportDataService.getHydrotestColumnKeys())
+                .includeSumCell(true)  // Добавить sum ячейку под вертикальной таблицей
+                .build();
+            
+            // Генерация универсального отчета
+            byte[] reportBytes = excelReportService.generateUniversalReport(
+                "templates/template1.xlsx",
+                java.util.Arrays.asList(table1, table2, table3),
+                "Templates"
+            );
+            
+            return createExcelResponse(reportBytes, "Universal_Report_" + id + ".xlsx");
+            
+        } catch (Exception e) {
+            log.error("Error generating Universal report for id: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }

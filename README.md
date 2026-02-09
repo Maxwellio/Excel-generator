@@ -10,7 +10,9 @@
 - ✅ Работа с именованными диапазонами и ячейками
 - ✅ Автоматический пересчет формул
 - ✅ Поддержка нескольких таблиц в одном отчете (горизонтальная и вертикальная ориентация)
-- ✅ Гибкое позиционирование вертикальных таблиц
+- ✅ **Универсальный метод для любых комбинаций таблиц**
+- ✅ Гибкое позиционирование таблиц
+- ✅ Sum ячейка с автоматическим пересчетом формул
 - ✅ REST API для скачивания отчетов
 - ✅ Универсальные методы для адаптации под любые шаблоны
 - ✅ Совместимость с Java 11+
@@ -283,6 +285,42 @@ byte[] reportBytes = excelReportService.generateMultiVerticalReport(
 ```
 
 **Подробное руководство:** [VERTICAL_MULTI_TABLE_GUIDE.md](VERTICAL_MULTI_TABLE_GUIDE.md)
+
+### НОВОЕ: Универсальный метод (рекомендуется)
+
+**Один метод для всех типов таблиц!**
+
+```java
+// Горизонтальная таблица
+UniversalTablePrintRequest table1 = UniversalTablePrintRequest.builder()
+    .tableName("Substitute")
+    // orientation не указана - будет HORIZONTAL по умолчанию
+    .headerRangeName("substitute_header")
+    .rowRangeName("substitute_row")
+    .data(data1)
+    .columnKeys(columnKeys1)
+    .includeSumCell(true)  // Добавить sum ячейку
+    .build();
+
+// Вертикальная таблица
+UniversalTablePrintRequest table2 = UniversalTablePrintRequest.builder()
+    .tableName("Hydrotest")
+    .orientation(UniversalTablePrintRequest.TableOrientation.VERTICAL)
+    .startCellName("start_cell")
+    .data(data2)
+    .columnKeys(columnKeys2)
+    .includeSumCell(true)
+    .build();
+
+// Одним методом генерируем отчет с обеими таблицами
+byte[] reportBytes = excelReportService.generateUniversalReport(
+    "templates/template.xlsx",
+    Arrays.asList(table1, table2),
+    "Templates"
+);
+```
+
+**Подробное руководство:** [UNIVERSAL_METHOD_GUIDE.md](UNIVERSAL_METHOD_GUIDE.md)
 
 ### Упрощенная генерация
 

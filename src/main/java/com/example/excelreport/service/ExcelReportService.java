@@ -3,6 +3,7 @@ package com.example.excelreport.service;
 import com.example.excelreport.model.ReportConfig;
 import com.example.excelreport.model.TablePrintRequest;
 import com.example.excelreport.model.VerticalTablePrintRequest;
+import com.example.excelreport.model.UniversalTablePrintRequest;
 import com.example.excelreport.util.ExcelUtils;
 import org.apache.poi.ss.usermodel.*;
 import org.apache.poi.ss.util.CellRangeAddress;
@@ -392,6 +393,231 @@ public class ExcelReportService {
             ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
             workbook.write(outputStream);
             return outputStream.toByteArray();
+        }
+    }
+
+    /**
+     * УНИВЕРСАЛЬНЫЙ метод генерации отчета с поддержкой горизонтальной и вертикальной ориентации
+     * Поддерживает несколько таблиц, каждая со своей ориентацией
+     * 
+     * @param templatePath путь к шаблону Excel
+     * @param tables список универсальных таблиц для печати
+     * @param templateSheetName имя листа с шаблонами
+     * @return byte[] содержимое Excel файла
+     */
+    public byte[] generateUniversalReport(String templatePath, List<UniversalTablePrintRequest> tables,
+                                          String templateSheetName) throws IOException {
+        try (InputStream templateStream = new ClassPathResource(templatePath).getInputStream();
+             Workbook workbook = new XSSFWorkbook(templateStream)) {
+            
+            Sheet workSheet = workbook.getSheetAt(0);
+            Sheet templateSheet = workbook.getSheet(templateSheetName);
+            
+            if (templateSheet == null) {
+                throw new IllegalArgumentException("Template sheet not found: " + templateSheetName);
+            }
+            
+            int currentRow = 0;
+            int currentCol = 0;
+            
+            // Обрабатываем каждую таблицу
+            for (UniversalTablePrintRequest table : tables) {
+                
+                // Устанавливаем название таблицы
+                if (table.getTableName() != null) {
+                    ExcelUtils.setNamedCellValue(workbook, "name", table.getTableName());
+                }
+                
+                // Определяем ориентацию (по умолчанию HORIZONTAL)
+                UniversalTablePrintRequest.TableOrientation orientation = table.getOrientation();
+                if (orientation == null) {
+                    orientation = UniversalTablePrintRequest.TableOrientation.HORIZONTAL;
+                }
+                
+                if (orientation == UniversalTablePrintRequest.TableOrientation.HORIZONTAL) {
+                    // Горизонтальная ориентация
+                    currentRow = printUniversalHorizontalTable(workbook, workSheet, templateSheet, table, currentRow);
+                    
+                    // Добавляем sum ячейку если нужно
+                    if (table.isIncludeSumCell()) {
+                        copySumCellWithFormula(workbook, workSheet, currentRow, table);
+                        currentRow++;
+                    }
+                    
+                } else {
+                    // Вертикальная ориентация
+                    
+                    // Определяем стартовую позицию
+                    int startRow;
+                    int startCol;
+                    
+                    if (table.getStartCellName() != null) {
+                        Cell startCell = ExcelUtils.getNamedCell(workbook, table.getStartCellName());
+                        if (startCell == null) {
+                            throw new IllegalArgumentException("Start cell not found: " + table.getStartCellName());
+                        }
+                        workSheet = startCell.getSheet();
+                        startRow = startCell.getRowIndex();
+                        startCol = startCell.getColumnIndex();
+                    } else if (table.getStartRow() != null && table.getStartColumn() != null) {
+                        startRow = table.getStartRow();
+                        startCol = table.getStartColumn();
+                    } else {
+                        // Автоматическая позиция под предыдущей таблицей
+                        startRow = currentRow;
+                        startCol = currentCol;
+                    }
+                    
+                    // Печатаем вертикальную таблицу
+                    int rowsUsed = printVerticalTable(workSheet, table.getData(), table.getColumnKeys(), startRow, startCol);
+                    
+                    // Добавляем sum ячейку если нужно
+                    if (table.isIncludeSumCell()) {
+                        int sumRow = startRow + rowsUsed;
+                        copySumCellWithFormula(workbook, workSheet, sumRow, table);
+                        rowsUsed++;
+                    }
+                    
+                    // Обновляем позицию для следующей таблицы (отступ 2 строки)
+                    currentRow = startRow + rowsUsed + 2;
+                    currentCol = startCol;
+                }
+            }
+            
+            // Пересчитываем формулы
+            ExcelUtils.recalculateFormulas(workbook);
+            
+            // Удаляем лист с шаблонами
+            if (templateSheetName != null) {
+                ExcelUtils.removeSheet(workbook, templateSheetName);
+            }
+            
+            // Записываем в ByteArray
+            ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+            workbook.write(outputStream);
+            return outputStream.toByteArray();
+        }
+    }
+
+    /**
+     * Печать одной универсальной горизонтальной таблицы
+     * @return номер следующей свободной строки
+     */
+    private int printUniversalHorizontalTable(Workbook workbook, Sheet workSheet, Sheet templateSheet,
+                                              UniversalTablePrintRequest table, int startRow) {
+        
+        // Получаем диапазоны шапки и строки-шаблона
+        CellRangeAddress headerRange = ExcelUtils.getNamedRange(workbook, table.getHeaderRangeName());
+        CellRangeAddress rowRange = ExcelUtils.getNamedRange(workbook, table.getRowRangeName());
+        
+        if (headerRange == null || rowRange == null) {
+            log.error("Header or row range not found for table: {}", table.getTableName());
+            return startRow;
+        }
+        
+        int currentRow = startRow;
+        
+        // Если указана стартовая ячейка, используем её
+        int startCol = 0;
+        if (table.getStartCellName() != null) {
+            Cell startCell = ExcelUtils.getNamedCell(workbook, table.getStartCellName());
+            if (startCell != null) {
+                currentRow = startCell.getRowIndex();
+                startCol = startCell.getColumnIndex();
+                workSheet = startCell.getSheet();
+            }
+        } else if (table.getStartRow() != null && table.getStartColumn() != null) {
+            currentRow = table.getStartRow();
+            startCol = table.getStartColumn();
+        }
+        
+        // Копируем шапку
+        ExcelUtils.copyRange(templateSheet, workSheet, headerRange, currentRow, startCol);
+        ExcelUtils.copyMergedRegions(templateSheet, workSheet, headerRange, currentRow, startCol);
+        ExcelUtils.copyColumnWidths(templateSheet, workSheet, headerRange, startCol);
+        
+        currentRow += (headerRange.getLastRow() - headerRange.getFirstRow() + 1);
+        
+        // Копируем и заполняем строки данными
+        for (Map<String, Object> rowData : table.getData()) {
+            // Копируем строку-шаблон
+            ExcelUtils.copyRange(templateSheet, workSheet, rowRange, currentRow, startCol);
+            ExcelUtils.copyMergedRegions(templateSheet, workSheet, rowRange, currentRow, startCol);
+            
+            // Заполняем данными
+            fillRowWithData(workSheet, currentRow, rowRange.getFirstColumn() + startCol, rowData, table.getColumnKeys());
+            
+            currentRow++;
+        }
+        
+        return currentRow;
+    }
+
+    /**
+     * Копировать ячейку sum с формулой и пересчитать её для текущей таблицы
+     * Формула будет скорректирована для диапазона текущей таблицы
+     */
+    private void copySumCellWithFormula(Workbook workbook, Sheet sheet, int targetRow, 
+                                       UniversalTablePrintRequest table) {
+        Cell sumCell = ExcelUtils.getNamedCell(workbook, "sum");
+        if (sumCell == null) {
+            log.warn("Sum cell not found");
+            return;
+        }
+        
+        // Получаем исходную ячейку sum
+        Sheet sumSheet = sumCell.getSheet();
+        int sumRowIdx = sumCell.getRowIndex();
+        int sumColIdx = sumCell.getColumnIndex();
+        
+        Row sourceRow = sumSheet.getRow(sumRowIdx);
+        if (sourceRow == null) {
+            return;
+        }
+        
+        Cell sourceCell = sourceRow.getCell(sumColIdx);
+        if (sourceCell == null) {
+            return;
+        }
+        
+        // Создаем целевую строку и ячейку
+        Row targetRowObj = sheet.getRow(targetRow);
+        if (targetRowObj == null) {
+            targetRowObj = sheet.createRow(targetRow);
+        }
+        
+        // Определяем колонку для sum ячейки
+        int targetCol = sumColIdx;
+        
+        // Если указана стартовая колонка, используем её
+        if (table.getStartColumn() != null) {
+            targetCol = table.getStartColumn() + (table.getColumnKeys().size() - 1); // Последняя колонка
+        } else if (table.getStartCellName() != null) {
+            Cell startCell = ExcelUtils.getNamedCell(workbook, table.getStartCellName());
+            if (startCell != null) {
+                targetCol = startCell.getColumnIndex() + (table.getColumnKeys().size() - 1);
+            }
+        }
+        
+        Cell targetCell = targetRowObj.getCell(targetCol);
+        if (targetCell == null) {
+            targetCell = targetRowObj.createCell(targetCol);
+        }
+        
+        // Копируем стиль
+        targetCell.setCellStyle(sourceCell.getCellStyle());
+        
+        // Копируем формулу, если есть
+        if (sourceCell.getCellType() == CellType.FORMULA) {
+            String formula = sourceCell.getCellFormula();
+            targetCell.setCellFormula(formula);
+            
+            // Принудительно пересчитываем формулу
+            FormulaEvaluator evaluator = workbook.getCreationHelper().createFormulaEvaluator();
+            evaluator.evaluateFormulaCell(targetCell);
+        } else {
+            // Копируем значение
+            ExcelUtils.copyCellValue(sourceCell, targetCell);
         }
     }
 }

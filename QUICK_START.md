@@ -267,6 +267,61 @@ public ResponseEntity<byte[]> downloadMultiVerticalReport(@RequestParam("id") Lo
 
 **Подробное руководство:** [VERTICAL_MULTI_TABLE_GUIDE.md](VERTICAL_MULTI_TABLE_GUIDE.md)
 
+### Пример 5: НОВОЕ - Универсальный метод (рекомендуется)
+
+**Один метод для любых комбинаций горизонтальных и вертикальных таблиц!**
+
+```java
+@GetMapping("/downloadUniversalReport")
+public ResponseEntity<byte[]> downloadUniversalReport(@RequestParam("id") Long id) {
+    try {
+        String itemName = jdbcTemplate.queryForObject(
+            "SELECT name FROM items WHERE id = ?", String.class, id);
+        
+        // Таблица 1: Горизонтальная с sum ячейкой
+        List<Map<String, Object>> data1 = jdbcTemplate.queryForList(
+            "SELECT position, part_number, name, qty, price FROM parts WHERE id = ?", id);
+        
+        UniversalTablePrintRequest table1 = UniversalTablePrintRequest.builder()
+            .tableName(itemName + " - Parts")
+            // orientation не указана - будет HORIZONTAL по умолчанию
+            .headerRangeName("parts_header")
+            .rowRangeName("parts_row")
+            .data(data1)
+            .columnKeys(Arrays.asList("position", "part_number", "name", "qty", "price"))
+            .includeSumCell(true)  // Добавить sum ячейку под таблицей
+            .build();
+        
+        // Таблица 2: Вертикальная
+        List<Map<String, Object>> data2 = jdbcTemplate.queryForList(
+            "SELECT parameter, value, unit FROM tests WHERE id = ?", id);
+        
+        UniversalTablePrintRequest table2 = UniversalTablePrintRequest.builder()
+            .tableName(itemName + " - Tests")
+            .orientation(UniversalTablePrintRequest.TableOrientation.VERTICAL)
+            .startCellName("start_cell")
+            .data(data2)
+            .columnKeys(Arrays.asList("parameter", "value", "unit"))
+            .includeSumCell(false)
+            .build();
+        
+        // Генерация универсального отчета
+        byte[] reportBytes = excelReportService.generateUniversalReport(
+            "templates/template.xlsx",
+            Arrays.asList(table1, table2),
+            "Templates"
+        );
+        
+        return createExcelResponse(reportBytes, "Universal_Report_" + id + ".xlsx");
+        
+    } catch (Exception e) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+    }
+}
+```
+
+**Подробное руководство:** [UNIVERSAL_METHOD_GUIDE.md](UNIVERSAL_METHOD_GUIDE.md)
+
 ---
 
 ## Шаг 5: Запустить и протестировать
