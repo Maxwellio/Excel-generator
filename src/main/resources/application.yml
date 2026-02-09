@@ -1,0 +1,19 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: excel-report-generator
+  
+  # Максимальный размер файла для загрузки
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+logging:
+  level:
+    com.example.excelreport: DEBUG
+    org.apache.poi: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
