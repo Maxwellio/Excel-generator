@@ -150,7 +150,6 @@ public class ExcelReportService {
     private int printVerticalDownHorizontalRight(Workbook workbook, Sheet workSheet, Sheet templateSheet,
                                                  UniversalTableConfig table, int startRow, int startColumn) {
         
-        int currentRow = startRow;
         CellRangeAddress templateRange = null;
         
         // Если указан шаблон строки, получаем его
@@ -161,13 +160,25 @@ public class ExcelReportService {
             }
         }
         
+        int rowsToInsert = table.getData().size();
+        
+        // Сдвигаем существующие строки вниз, чтобы освободить место для новых данных
+        shiftRowsDown(workSheet, startRow, rowsToInsert);
+        
+        int currentRow = startRow;
+        
         // Печатаем каждую строку данных
         for (Map<String, Object> rowData : table.getData()) {
             
+            // Создаем строку
+            Row row = workSheet.getRow(currentRow);
+            if (row == null) {
+                row = workSheet.createRow(currentRow);
+            }
+            
             // Копируем стили из шаблона, если указан
-            if (templateRange != null) {
-                ExcelUtils.copyRange(templateSheet, workSheet, templateRange, currentRow, startColumn);
-                ExcelUtils.copyMergedRegions(templateSheet, workSheet, templateRange, currentRow, startColumn);
+            if (templateRange != null && templateSheet != null) {
+                copyRowStylesFromTemplate(templateSheet, workSheet, templateRange, currentRow, startColumn);
             }
             
             // Заполняем данными
@@ -180,7 +191,71 @@ public class ExcelReportService {
             currentRow++;
         }
         
-        return currentRow - startRow;
+        return rowsToInsert;
+    }
+    
+    /**
+     * Сдвинуть существующие строки вниз для освобождения места под новые данные
+     */
+    private void shiftRowsDown(Sheet sheet, int startRow, int numberOfRows) {
+        if (numberOfRows <= 0) {
+            return;
+        }
+        
+        int lastRowNum = sheet.getLastRowNum();
+        
+        // Если стартовая строка находится в пределах существующих строк
+        if (startRow <= lastRowNum) {
+            // Сдвигаем строки вниз
+            sheet.shiftRows(startRow, lastRowNum, numberOfRows, true, true);
+            log.debug("Shifted rows from {} to {} down by {} rows", startRow, lastRowNum, numberOfRows);
+        }
+    }
+    
+    /**
+     * Копировать стили из строки-шаблона в целевую строку
+     */
+    private void copyRowStylesFromTemplate(Sheet templateSheet, Sheet targetSheet, 
+                                          CellRangeAddress templateRange, int targetRow, int targetStartColumn) {
+        
+        int templateRowNum = templateRange.getFirstRow();
+        Row templateRow = templateSheet.getRow(templateRowNum);
+        
+        if (templateRow == null) {
+            log.warn("Template row is null at row {}", templateRowNum);
+            return;
+        }
+        
+        Row targetRowObj = targetSheet.getRow(targetRow);
+        if (targetRowObj == null) {
+            targetRowObj = targetSheet.createRow(targetRow);
+        }
+        
+        // Копируем высоту строки
+        targetRowObj.setHeight(templateRow.getHeight());
+        
+        // Копируем стили каждой ячейки из шаблона
+        int templateStartCol = templateRange.getFirstColumn();
+        int templateEndCol = templateRange.getLastColumn();
+        
+        for (int colIdx = templateStartCol; colIdx <= templateEndCol; colIdx++) {
+            Cell templateCell = templateRow.getCell(colIdx);
+            if (templateCell != null) {
+                int targetColIdx = targetStartColumn + (colIdx - templateStartCol);
+                Cell targetCell = targetRowObj.getCell(targetColIdx);
+                if (targetCell == null) {
+                    targetCell = targetRowObj.createCell(targetColIdx);
+                }
+                
+                // Копируем только стиль, не значение
+                targetCell.setCellStyle(templateCell.getCellStyle());
+            }
+        }
+        
+        // Копируем merged regions из шаблона
+        ExcelUtils.copyMergedRegions(templateSheet, targetSheet, templateRange, targetRow, targetStartColumn);
+        
+        log.debug("Copied styles from template row {} to target row {}", templateRowNum, targetRow);
     }
     
     /**
@@ -200,30 +275,39 @@ public class ExcelReportService {
             }
         }
         
+        // Для транспонированной таблицы высота = количество ключей (полей)
+        int rowsNeeded = table.getColumnKeys().size();
+        
+        // Сдвигаем существующие строки вниз
+        shiftRowsDown(workSheet, startRow, rowsNeeded);
+        
         int currentColumn = startColumn;
         
         // Печатаем каждую "строку" (которая идет вправо)
         for (Map<String, Object> rowData : table.getData()) {
             
-            // Копируем стили из шаблона вертикально, если указан
-            if (templateRange != null) {
-                // Копируем шаблон вертикально
-                for (int i = 0; i < table.getColumnKeys().size(); i++) {
+            // Заполняем данными и копируем стили (вертикально вниз)
+            for (int i = 0; i < table.getColumnKeys().size(); i++) {
+                int currentRowIdx = startRow + i;
+                
+                // Создаем ячейку
+                Cell cell = ExcelUtils.getOrCreateCell(workSheet, currentRowIdx, currentColumn);
+                
+                // Копируем стиль из шаблона, если указан
+                if (templateRange != null && templateSheet != null) {
                     Row templateRow = templateSheet.getRow(templateRange.getFirstRow());
                     if (templateRow != null) {
-                        Cell templateCell = templateRow.getCell(templateRange.getFirstColumn());
+                        // Берем стиль из соответствующей колонки шаблона
+                        int templateColIdx = templateRange.getFirstColumn() + (i % (templateRange.getLastColumn() - templateRange.getFirstColumn() + 1));
+                        Cell templateCell = templateRow.getCell(templateColIdx);
                         if (templateCell != null) {
-                            Cell targetCell = ExcelUtils.getOrCreateCell(workSheet, startRow + i, currentColumn);
-                            ExcelUtils.copyCellStyle(templateCell, targetCell);
+                            cell.setCellStyle(templateCell.getCellStyle());
                         }
                     }
                 }
-            }
-            
-            // Заполняем данными (вертикально вниз)
-            for (int i = 0; i < table.getColumnKeys().size(); i++) {
+                
+                // Заполняем данными
                 String key = table.getColumnKeys().get(i);
-                Cell cell = ExcelUtils.getOrCreateCell(workSheet, startRow + i, currentColumn);
                 ExcelUtils.fillCellFromMap(cell, rowData, key);
             }
             
@@ -231,7 +315,7 @@ public class ExcelReportService {
         }
         
         // Возвращаем количество использованных строк (высота транспонированной таблицы)
-        return table.getColumnKeys().size();
+        return rowsNeeded;
     }
     
     /**
@@ -258,7 +342,10 @@ public class ExcelReportService {
             sumColumn = startColumn + table.getColumnKeys().size() - 1;
         }
         
-        // Копируем ячейку sum
+        // Сдвигаем существующие строки вниз для sum ячейки
+        shiftRowsDown(sheet, sumRow, 1);
+        
+        // Создаем строку для sum ячейки
         Row targetRow = sheet.getRow(sumRow);
         if (targetRow == null) {
             targetRow = sheet.createRow(sumRow);
