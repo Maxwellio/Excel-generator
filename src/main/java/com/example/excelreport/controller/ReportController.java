@@ -1,8 +1,7 @@
 package com.example.excelreport.controller;
 
-import com.example.excelreport.model.TablePrintRequest;
-import com.example.excelreport.model.VerticalTablePrintRequest;
-import com.example.excelreport.model.UniversalTablePrintRequest;
+import com.example.excelreport.model.UniversalReportRequest;
+import com.example.excelreport.model.UniversalTableConfig;
 import com.example.excelreport.service.ExcelReportService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -13,13 +12,12 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
 /**
- * REST контроллер для скачивания Excel отчетов
- * ПРИМЕР - адаптируйте под свой проект
+ * REST контроллер для генерации Excel отчетов
+ * Использует единственный универсальный метод для всех типов отчетов
  * Совместимость: Java 11+
  */
 @RestController
@@ -35,228 +33,265 @@ public class ReportController {
     private ReportDataService reportDataService;
 
     /**
-     * Скачать отчет Substitute
-     * GET /api/downloadReportSub?id=123
+     * Пример 1: Простой отчет с одной таблицей (вертикальное направление)
+     * GET /api/reports/simple?id=123
      */
-    @GetMapping("/downloadReportSub")
-    public ResponseEntity<byte[]> downloadSubstituteReport(@RequestParam("id") Long id) {
+    @GetMapping("/reports/simple")
+    public ResponseEntity<byte[]> downloadSimpleReport(@RequestParam("id") Long id) {
         try {
-            log.info("Generating Substitute report for id: {}", id);
+            log.info("Generating simple report for id: {}", id);
             
-            // Получаем данные для отчета
+            // Получаем данные
             List<Map<String, Object>> data = reportDataService.getSubstituteData(id);
-            List<String> columnKeys = reportDataService.getSubstituteColumnKeys();
             String itemName = reportDataService.getItemName(id);
             
-            // Создаем запрос на печать таблицы
-            TablePrintRequest tableRequest = TablePrintRequest.builder()
-                .tableName(itemName)
-                .headerRangeName("substitute_header")
-                .rowRangeName("substitute_row")
-                .data(data)
-                .columnKeys(columnKeys)
-                .includeSumRow(true)
+            // Создаем отчет с одной таблицей
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template1.xlsx")
+                .templateSheet("Templates")  // Этот лист будет удален
+                .addTable(
+                    UniversalTableConfig
+                        .table(data, reportDataService.getSubstituteColumnKeys())
+                        .direction(UniversalTableConfig.PrintDirection.VERTICAL_DOWN_HORIZONTAL_RIGHT)
+                        .startCell("data_start")  // Именованная ячейка для начала
+                        .tableName("name", itemName)  // Вставить имя в ячейку "name"
+                        .build()
+                )
                 .build();
             
-            // Генерируем отчет
-            byte[] reportBytes = excelReportService.generateHorizontalReport(
-                "templates/template1.xlsx",
-                Collections.singletonList(tableRequest),
-                "Templates"
-            );
-            
-            return createExcelResponse(reportBytes, "Substitute_Report_" + id + ".xlsx");
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Simple_Report_" + id + ".xlsx");
             
         } catch (Exception e) {
-            log.error("Error generating Substitute report for id: {}", id, e);
+            log.error("Error generating simple report for id: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     /**
-     * Скачать отчет Fitting
-     * GET /api/downloadReportFit?id=123
+     * Пример 2: Отчет с копированием стилей из шаблона и sum ячейкой
+     * GET /api/reports/styled?id=123
      */
-    @GetMapping("/downloadReportFit")
-    public ResponseEntity<byte[]> downloadFittingReport(@RequestParam("id") Long id) {
+    @GetMapping("/reports/styled")
+    public ResponseEntity<byte[]> downloadStyledReport(@RequestParam("id") Long id) {
         try {
-            log.info("Generating Fitting report for id: {}", id);
+            log.info("Generating styled report for id: {}", id);
             
-            // Получаем данные для отчета
-            List<Map<String, Object>> data = reportDataService.getFittingData(id);
-            List<String> columnKeys = reportDataService.getFittingColumnKeys();
+            List<Map<String, Object>> data = reportDataService.getSubstituteData(id);
             String itemName = reportDataService.getItemName(id);
             
-            // Создаем запрос на печать таблицы
-            TablePrintRequest tableRequest = TablePrintRequest.builder()
-                .tableName(itemName)
-                .headerRangeName("fitting_header")
-                .rowRangeName("fitting_row")
-                .data(data)
-                .columnKeys(columnKeys)
-                .includeSumRow(true)
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template1.xlsx")
+                .templateSheet("Templates")
+                .addTable(
+                    UniversalTableConfig
+                        .table(data, reportDataService.getSubstituteColumnKeys())
+                        .direction(UniversalTableConfig.PrintDirection.VERTICAL_DOWN_HORIZONTAL_RIGHT)
+                        .templateRow("substitute_row")  // Копировать стили из этого диапазона
+                        .startCell("data_start")
+                        .tableName("name", itemName)
+                        .sumCell("sum")  // Скопировать ячейку sum под таблицу
+                        .build()
+                )
                 .build();
             
-            // Генерируем отчет
-            byte[] reportBytes = excelReportService.generateHorizontalReport(
-                "templates/template1.xlsx",
-                Collections.singletonList(tableRequest),
-                "Templates"
-            );
-            
-            return createExcelResponse(reportBytes, "Fitting_Report_" + id + ".xlsx");
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Styled_Report_" + id + ".xlsx");
             
         } catch (Exception e) {
-            log.error("Error generating Fitting report for id: {}", id, e);
+            log.error("Error generating styled report for id: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     /**
-     * Скачать отчет Hydrotest
-     * GET /api/downloadReportHydro?id=123
+     * Пример 3: Отчет с sum ячейкой в заданном столбце
+     * GET /api/reports/sum-column?id=123
      */
-    @GetMapping("/downloadReportHydro")
-    public ResponseEntity<byte[]> downloadHydrotestReport(@RequestParam("id") Long id) {
+    @GetMapping("/reports/sum-column")
+    public ResponseEntity<byte[]> downloadReportWithSumColumn(@RequestParam("id") Long id) {
         try {
-            log.info("Generating Hydrotest report for id: {}", id);
+            log.info("Generating report with sum column for id: {}", id);
             
-            // Получаем данные для отчета
+            List<Map<String, Object>> data = reportDataService.getSubstituteData(id);
+            String itemName = reportDataService.getItemName(id);
+            
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template1.xlsx")
+                .templateSheet("Templates")
+                .addTable(
+                    UniversalTableConfig
+                        .table(data, reportDataService.getSubstituteColumnKeys())
+                        .templateRow("substitute_row")
+                        .startCell("data_start")
+                        .tableName("name", itemName)
+                        .sumCell("sum", 5)  // Sum в столбце 5 (0-based)
+                        .build()
+                )
+                .build();
+            
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Sum_Column_Report_" + id + ".xlsx");
+            
+        } catch (Exception e) {
+            log.error("Error generating sum column report for id: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Пример 4: Отчет с несколькими таблицами
+     * GET /api/reports/multi?id=123
+     */
+    @GetMapping("/reports/multi")
+    public ResponseEntity<byte[]> downloadMultiTableReport(@RequestParam("id") Long id) {
+        try {
+            log.info("Generating multi-table report for id: {}", id);
+            
+            String itemName = reportDataService.getItemName(id);
+            
+            // Таблица 1: Substitute (вертикальное направление)
+            UniversalTableConfig table1 = UniversalTableConfig
+                .table(reportDataService.getSubstituteData(id), reportDataService.getSubstituteColumnKeys())
+                .direction(UniversalTableConfig.PrintDirection.VERTICAL_DOWN_HORIZONTAL_RIGHT)
+                .templateRow("substitute_row")
+                .startCell("table1_start")
+                .tableName("name", itemName + " - Substitute")
+                .sumCell("sum", 4)
+                .build();
+            
+            // Таблица 2: Fitting (вертикальное направление)
+            UniversalTableConfig table2 = UniversalTableConfig
+                .table(reportDataService.getFittingData(id), reportDataService.getFittingColumnKeys())
+                .direction(UniversalTableConfig.PrintDirection.VERTICAL_DOWN_HORIZONTAL_RIGHT)
+                .templateRow("fitting_row")
+                .startCell("table2_start")
+                .tableName("name", itemName + " - Fitting")
+                .build();
+            
+            // Таблица 3: Hydrotest (горизонтальное направление - транспонированная)
+            UniversalTableConfig table3 = UniversalTableConfig
+                .table(reportDataService.getHydrotestData(id), reportDataService.getHydrotestColumnKeys())
+                .direction(UniversalTableConfig.PrintDirection.HORIZONTAL_RIGHT_VERTICAL_DOWN)
+                .startPosition(20, 0)  // Координаты вместо именованной ячейки
+                .tableName("name", itemName + " - Hydrotest")
+                .sumCell("sum")
+                .build();
+            
+            // Создаем отчет с тремя таблицами
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template1.xlsx")
+                .templateSheet("Templates")
+                .addTable(table1)
+                .addTable(table2)
+                .addTable(table3)
+                .build();
+            
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Multi_Table_Report_" + id + ".xlsx");
+            
+        } catch (Exception e) {
+            log.error("Error generating multi-table report for id: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Пример 5: Минимальная конфигурация (без опциональных параметров)
+     * GET /api/reports/minimal?id=123
+     */
+    @GetMapping("/reports/minimal")
+    public ResponseEntity<byte[]> downloadMinimalReport(@RequestParam("id") Long id) {
+        try {
+            log.info("Generating minimal report for id: {}", id);
+            
+            List<Map<String, Object>> data = reportDataService.getSubstituteData(id);
+            
+            // Минимальная конфигурация - только данные и ключи
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template1.xlsx")
+                .addTable(
+                    UniversalTableConfig
+                        .table(data, reportDataService.getSubstituteColumnKeys())
+                        .build()
+                )
+                .build();
+            
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Minimal_Report_" + id + ".xlsx");
+            
+        } catch (Exception e) {
+            log.error("Error generating minimal report for id: {}", id, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+        }
+    }
+
+    /**
+     * Пример 6: Транспонированная таблица (горизонтальное направление)
+     * GET /api/reports/transposed?id=123
+     */
+    @GetMapping("/reports/transposed")
+    public ResponseEntity<byte[]> downloadTransposedReport(@RequestParam("id") Long id) {
+        try {
+            log.info("Generating transposed report for id: {}", id);
+            
             List<Map<String, Object>> data = reportDataService.getHydrotestData(id);
-            List<String> columnKeys = reportDataService.getHydrotestColumnKeys();
             String itemName = reportDataService.getItemName(id);
             
-            // Генерируем отчет с вертикальной ориентацией
-            byte[] reportBytes = excelReportService.generateVerticalReport(
-                "templates/template2.xlsx",
-                itemName,
-                data,
-                columnKeys,
-                "start_cell",
-                "Templates"
-            );
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template2.xlsx")
+                .templateSheet("Templates")
+                .addTable(
+                    UniversalTableConfig
+                        .table(data, reportDataService.getHydrotestColumnKeys())
+                        .direction(UniversalTableConfig.PrintDirection.HORIZONTAL_RIGHT_VERTICAL_DOWN)
+                        .startCell("start_cell")
+                        .tableName("name", itemName)
+                        .sumCell("sum", 10)
+                        .build()
+                )
+                .build();
             
-            return createExcelResponse(reportBytes, "Hydrotest_Report_" + id + ".xlsx");
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Transposed_Report_" + id + ".xlsx");
             
         } catch (Exception e) {
-            log.error("Error generating Hydrotest report for id: {}", id, e);
+            log.error("Error generating transposed report for id: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
 
     /**
-     * Скачать отчет с несколькими вертикальными таблицами
-     * GET /api/downloadReportMultiVertical?id=123
-     * ПРИМЕР использования нескольких вертикальных таблиц
+     * Пример 7: Комплексный отчет (все возможности)
+     * GET /api/reports/complex?id=123
      */
-    @GetMapping("/downloadReportMultiVertical")
-    public ResponseEntity<byte[]> downloadMultiVerticalReport(@RequestParam("id") Long id) {
+    @GetMapping("/reports/complex")
+    public ResponseEntity<byte[]> downloadComplexReport(@RequestParam("id") Long id) {
         try {
-            log.info("Generating Multi-Vertical report for id: {}", id);
+            log.info("Generating complex report for id: {}", id);
             
-            String itemName = reportDataService.getItemName(id);
+            String itemName = "Результат запроса к БД: " + reportDataService.getItemName(id) + " \"ручная подпись\"";
             
-            // Первая вертикальная таблица
-            List<Map<String, Object>> data1 = reportDataService.getHydrotestData(id);
-            VerticalTablePrintRequest table1 = VerticalTablePrintRequest.builder()
-                .tableName(itemName + " - Part 1")
-                .startCellName("start_cell")  // Используем именованную ячейку
-                .data(data1)
-                .columnKeys(reportDataService.getHydrotestColumnKeys())
+            UniversalReportRequest report = UniversalReportRequest
+                .template("templates/template1.xlsx")
+                .templateSheet("Templates")
+                .addTable(
+                    UniversalTableConfig
+                        .table(reportDataService.getSubstituteData(id), reportDataService.getSubstituteColumnKeys())
+                        .direction(UniversalTableConfig.PrintDirection.VERTICAL_DOWN_HORIZONTAL_RIGHT)
+                        .templateRow("substitute_row")  // Строка-шаблон для стилей
+                        .startCell("data_start")  // Именованная стартовая ячейка
+                        .tableName("name", itemName)  // Имя таблицы с результатом запроса + подпись
+                        .sumCell("sum", 5)  // Sum в столбце 5, под последней строкой
+                        .build()
+                )
                 .build();
             
-            // Вторая вертикальная таблица (будет размещена под первой)
-            List<Map<String, Object>> data2 = reportDataService.getHydrotestData(id);
-            VerticalTablePrintRequest table2 = VerticalTablePrintRequest.builder()
-                .tableName(itemName + " - Part 2")
-                // startCellName не указан - таблица будет размещена под предыдущей
-                .data(data2)
-                .columnKeys(reportDataService.getHydrotestColumnKeys())
-                .build();
-            
-            // Третья таблица с явным указанием координат
-            List<Map<String, Object>> data3 = reportDataService.getHydrotestData(id);
-            VerticalTablePrintRequest table3 = VerticalTablePrintRequest.builder()
-                .tableName(itemName + " - Part 3")
-                .startRow(20)       // Явно указываем строку
-                .startColumn(5)     // Явно указываем колонку
-                .data(data3)
-                .columnKeys(reportDataService.getHydrotestColumnKeys())
-                .build();
-            
-            // Генерируем отчет с несколькими вертикальными таблицами
-            byte[] reportBytes = excelReportService.generateMultiVerticalReport(
-                "templates/template2.xlsx",
-                java.util.Arrays.asList(table1, table2, table3),
-                "Templates"
-            );
-            
-            return createExcelResponse(reportBytes, "MultiVertical_Report_" + id + ".xlsx");
+            byte[] reportBytes = excelReportService.generateReport(report);
+            return createExcelResponse(reportBytes, "Complex_Report_" + id + ".xlsx");
             
         } catch (Exception e) {
-            log.error("Error generating Multi-Vertical report for id: {}", id, e);
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
-        }
-    }
-
-    /**
-     * УНИВЕРСАЛЬНЫЙ отчет с несколькими таблицами разных ориентаций
-     * GET /api/downloadUniversalReport?id=123
-     * РЕКОМЕНДУЕТСЯ для новых проектов - один метод для всех типов таблиц
-     */
-    @GetMapping("/downloadUniversalReport")
-    public ResponseEntity<byte[]> downloadUniversalReport(@RequestParam("id") Long id) {
-        try {
-            log.info("Generating Universal report for id: {}", id);
-            
-            String itemName = reportDataService.getItemName(id);
-            
-            // Таблица 1: Горизонтальная (Substitute)
-            List<Map<String, Object>> substituteData = reportDataService.getSubstituteData(id);
-            UniversalTablePrintRequest table1 = UniversalTablePrintRequest.builder()
-                .tableName(itemName + " - Substitute")
-                .orientation(UniversalTablePrintRequest.TableOrientation.HORIZONTAL) // Можно не указывать - по умолчанию
-                .headerRangeName("substitute_header")
-                .rowRangeName("substitute_row")
-                .data(substituteData)
-                .columnKeys(reportDataService.getSubstituteColumnKeys())
-                .includeSumCell(true)  // Добавить sum ячейку под таблицей
-                .build();
-            
-            // Таблица 2: Горизонтальная (Fitting)
-            List<Map<String, Object>> fittingData = reportDataService.getFittingData(id);
-            UniversalTablePrintRequest table2 = UniversalTablePrintRequest.builder()
-                .tableName(itemName + " - Fitting")
-                // orientation не указана - будет HORIZONTAL по умолчанию
-                .headerRangeName("fitting_header")
-                .rowRangeName("fitting_row")
-                .data(fittingData)
-                .columnKeys(reportDataService.getFittingColumnKeys())
-                .includeSumCell(false)
-                .build();
-            
-            // Таблица 3: Вертикальная (Hydrotest)
-            List<Map<String, Object>> hydroData = reportDataService.getHydrotestData(id);
-            UniversalTablePrintRequest table3 = UniversalTablePrintRequest.builder()
-                .tableName(itemName + " - Hydrotest")
-                .orientation(UniversalTablePrintRequest.TableOrientation.VERTICAL) // Вертикальная
-                .startCellName("start_cell")  // Начать от именованной ячейки
-                .data(hydroData)
-                .columnKeys(reportDataService.getHydrotestColumnKeys())
-                .includeSumCell(true)  // Добавить sum ячейку под вертикальной таблицей
-                .build();
-            
-            // Генерация универсального отчета
-            byte[] reportBytes = excelReportService.generateUniversalReport(
-                "templates/template1.xlsx",
-                java.util.Arrays.asList(table1, table2, table3),
-                "Templates"
-            );
-            
-            return createExcelResponse(reportBytes, "Universal_Report_" + id + ".xlsx");
-            
-        } catch (Exception e) {
-            log.error("Error generating Universal report for id: {}", id, e);
+            log.error("Error generating complex report for id: {}", id, e);
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
     }
