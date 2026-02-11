@@ -300,4 +300,98 @@ public class ExcelUtils {
             targetSheet.setColumnWidth(targetColIdx, width);
         }
     }
+
+    /**
+     * Сдвинуть строки вниз, начиная с указанной строки
+     * Это позволяет вставить новые строки без перезаписи существующих
+     * 
+     * @param sheet лист Excel
+     * @param startRow номер строки, с которой начинать сдвиг
+     * @param rowsToInsert количество строк для вставки
+     */
+    public static void shiftRowsDown(Sheet sheet, int startRow, int rowsToInsert) {
+        if (rowsToInsert <= 0) {
+            return;
+        }
+        
+        int lastRowNum = sheet.getLastRowNum();
+        
+        // Если стартовая строка находится за пределами существующих данных, ничего не делаем
+        if (startRow > lastRowNum) {
+            return;
+        }
+        
+        // Сдвигаем строки вниз
+        sheet.shiftRows(startRow, lastRowNum, rowsToInsert, true, true);
+    }
+
+    /**
+     * Копировать строку-шаблон с сохранением всех стилей
+     * Копирует одну строку из шаблона в целевой лист несколько раз
+     * 
+     * @param sourceSheet лист-источник (обычно Templates)
+     * @param targetSheet целевой лист
+     * @param templateRowIndex индекс строки-шаблона на листе-источнике
+     * @param targetStartRow начальная строка для вставки в целевом листе
+     * @param numberOfRows количество строк для копирования
+     */
+    public static void copyTemplateRows(Sheet sourceSheet, Sheet targetSheet, 
+                                       int templateRowIndex, int targetStartRow, int numberOfRows) {
+        Row templateRow = sourceSheet.getRow(templateRowIndex);
+        if (templateRow == null) {
+            return;
+        }
+        
+        for (int i = 0; i < numberOfRows; i++) {
+            int targetRowIndex = targetStartRow + i;
+            Row targetRow = targetSheet.getRow(targetRowIndex);
+            if (targetRow == null) {
+                targetRow = targetSheet.createRow(targetRowIndex);
+            }
+            
+            // Копируем высоту строки
+            targetRow.setHeight(templateRow.getHeight());
+            
+            // Копируем все ячейки со стилями
+            for (int cellIdx = templateRow.getFirstCellNum(); cellIdx < templateRow.getLastCellNum(); cellIdx++) {
+                Cell sourceCell = templateRow.getCell(cellIdx);
+                if (sourceCell != null) {
+                    Cell targetCell = targetRow.getCell(cellIdx);
+                    if (targetCell == null) {
+                        targetCell = targetRow.createCell(cellIdx);
+                    }
+                    
+                    // Копируем только стиль, значение будет заполнено позже
+                    copyCellStyle(sourceCell, targetCell);
+                    
+                    // Если в шаблоне есть формула или значение по умолчанию, копируем его
+                    if (sourceCell.getCellType() == CellType.FORMULA || 
+                        sourceCell.getCellType() == CellType.BLANK ||
+                        (sourceCell.getCellType() == CellType.STRING && sourceCell.getStringCellValue().isEmpty())) {
+                        // Оставляем пустым для заполнения данными
+                        targetCell.setBlank();
+                    } else {
+                        // Копируем значение по умолчанию из шаблона
+                        copyCellValue(sourceCell, targetCell);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Получить индекс строки-шаблона из именованного диапазона
+     * Используется для вертикальных таблиц
+     * 
+     * @param workbook книга Excel
+     * @param templateRangeName имя диапазона шаблона
+     * @return индекс строки-шаблона или -1 если не найдено
+     */
+    public static int getTemplateRowIndex(Workbook workbook, String templateRangeName) {
+        CellRangeAddress range = getNamedRange(workbook, templateRangeName);
+        if (range == null) {
+            return -1;
+        }
+        return range.getFirstRow();
+    }
 }

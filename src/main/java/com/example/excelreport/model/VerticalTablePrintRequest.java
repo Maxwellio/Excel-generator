@@ -11,6 +11,7 @@ public class VerticalTablePrintRequest {
     
     private String tableName;
     private String startCellName;
+    private String templateRowRangeName;
     private List<Map<String, Object>> data;
     private List<String> columnKeys;
     private Integer startRow;
@@ -19,6 +20,7 @@ public class VerticalTablePrintRequest {
     private VerticalTablePrintRequest(Builder builder) {
         this.tableName = builder.tableName;
         this.startCellName = builder.startCellName;
+        this.templateRowRangeName = builder.templateRowRangeName;
         this.data = builder.data;
         this.columnKeys = builder.columnKeys;
         this.startRow = builder.startRow;
@@ -32,6 +34,10 @@ public class VerticalTablePrintRequest {
     
     public String getStartCellName() {
         return startCellName;
+    }
+    
+    public String getTemplateRowRangeName() {
+        return templateRowRangeName;
     }
     
     public List<Map<String, Object>> getData() {
@@ -58,6 +64,7 @@ public class VerticalTablePrintRequest {
     public static class Builder {
         private String tableName;
         private String startCellName;
+        private String templateRowRangeName;
         private List<Map<String, Object>> data;
         private List<String> columnKeys;
         private Integer startRow;
@@ -70,6 +77,15 @@ public class VerticalTablePrintRequest {
         
         public Builder startCellName(String startCellName) {
             this.startCellName = startCellName;
+            return this;
+        }
+        
+        /**
+         * Имя именованного диапазона для строки-шаблона
+         * Строка-шаблон будет скопирована со всеми стилями для каждой строки данных
+         */
+        public Builder templateRowRangeName(String templateRowRangeName) {
+            this.templateRowRangeName = templateRowRangeName;
             return this;
         }
         

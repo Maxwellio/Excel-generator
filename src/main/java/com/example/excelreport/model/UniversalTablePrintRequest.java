@@ -113,7 +113,9 @@ public class UniversalTablePrintRequest {
         }
         
         /**
-         * Имя именованного диапазона для строки-шаблона (только для HORIZONTAL)
+         * Имя именованного диапазона для строки-шаблона
+         * Для HORIZONTAL: шаблон строки данных
+         * Для VERTICAL: шаблон строки для копирования стилей
          */
         public Builder rowRangeName(String rowRangeName) {
             this.rowRangeName = rowRangeName;

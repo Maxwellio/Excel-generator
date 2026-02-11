@@ -76,10 +76,20 @@ public class ExcelReportService {
     /**
      * Универсальный метод генерации отчета с вертикальной ориентацией
      * (данные заполняются вертикально вниз от указанной ячейки)
+     * Поддерживает копирование стилей из строки-шаблона
+     * 
+     * @param templatePath путь к файлу шаблона
+     * @param itemName название элемента для заполнения (опционально)
+     * @param data данные для заполнения
+     * @param columnKeys ключи колонок
+     * @param startCellName имя начальной ячейки
+     * @param templateRowRangeName имя диапазона строки-шаблона (опционально, для копирования стилей)
+     * @param templateSheetName имя листа с шаблонами
      */
     public byte[] generateVerticalReport(String templatePath, String itemName, 
                                         List<Map<String, Object>> data, List<String> columnKeys,
-                                        String startCellName, String templateSheetName) throws IOException {
+                                        String startCellName, String templateRowRangeName,
+                                        String templateSheetName) throws IOException {
         try (InputStream templateStream = new ClassPathResource(templatePath).getInputStream();
              Workbook workbook = new XSSFWorkbook(templateStream)) {
             
@@ -98,8 +108,19 @@ public class ExcelReportService {
             int startRow = startCell.getRowIndex();
             int startCol = startCell.getColumnIndex();
             
+            // Получаем лист с шаблонами и индекс строки-шаблона
+            Sheet templateSheet = null;
+            int templateRowIndex = -1;
+            
+            if (templateSheetName != null && templateRowRangeName != null) {
+                templateSheet = workbook.getSheet(templateSheetName);
+                if (templateSheet != null) {
+                    templateRowIndex = ExcelUtils.getTemplateRowIndex(workbook, templateRowRangeName);
+                }
+            }
+            
             // Заполняем данные вертикально
-            printVerticalData(workSheet, data, columnKeys, startRow, startCol);
+            printVerticalData(workSheet, templateSheet, templateRowIndex, data, columnKeys, startRow, startCol);
             
             // Пересчитываем формулы
             ExcelUtils.recalculateFormulas(workbook);
@@ -115,10 +136,21 @@ public class ExcelReportService {
             return outputStream.toByteArray();
         }
     }
+    
+    /**
+     * Перегруженный метод для обратной совместимости (без templateRowRangeName)
+     */
+    public byte[] generateVerticalReport(String templatePath, String itemName, 
+                                        List<Map<String, Object>> data, List<String> columnKeys,
+                                        String startCellName, String templateSheetName) throws IOException {
+        return generateVerticalReport(templatePath, itemName, data, columnKeys, 
+                                     startCellName, null, templateSheetName);
+    }
 
     /**
      * Универсальный метод генерации отчета с несколькими вертикальными таблицами
      * Таблицы размещаются одна под другой
+     * Поддерживает копирование стилей из строки-шаблона
      */
     public byte[] generateMultiVerticalReport(String templatePath, List<VerticalTablePrintRequest> tables,
                                               String templateSheetName) throws IOException {
@@ -126,6 +158,8 @@ public class ExcelReportService {
              Workbook workbook = new XSSFWorkbook(templateStream)) {
             
             Sheet workSheet = workbook.getSheetAt(0);
+            Sheet templateSheet = templateSheetName != null ? workbook.getSheet(templateSheetName) : null;
+            
             int currentRow = 0;
             int currentCol = 0;
             
@@ -161,8 +195,15 @@ public class ExcelReportService {
                     startCol = currentCol;
                 }
                 
+                // Получаем индекс строки-шаблона
+                int templateRowIndex = -1;
+                if (templateSheet != null && table.getTemplateRowRangeName() != null) {
+                    templateRowIndex = ExcelUtils.getTemplateRowIndex(workbook, table.getTemplateRowRangeName());
+                }
+                
                 // Печатаем таблицу
-                int rowsUsed = printVerticalTable(workSheet, table.getData(), table.getColumnKeys(), startRow, startCol);
+                int rowsUsed = printVerticalTable(workSheet, templateSheet, templateRowIndex, 
+                                                  table.getData(), table.getColumnKeys(), startRow, startCol);
                 
                 // Обновляем текущую позицию для следующей таблицы
                 // Добавляем отступ между таблицами (2 строки)
@@ -244,11 +285,35 @@ public class ExcelReportService {
 
     /**
      * Печать данных вертикально (для второго типа шаблона)
+     * Теперь поддерживает копирование стилей из строки-шаблона и вставку строк
+     * 
+     * @param sheet целевой лист
+     * @param templateSheet лист с шаблонами
+     * @param templateRowIndex индекс строки-шаблона (из Templates листа)
+     * @param data данные для заполнения
+     * @param columnKeys ключи колонок
+     * @param startRow начальная строка
+     * @param startCol начальная колонка
      */
-    private void printVerticalData(Sheet sheet, List<Map<String, Object>> data, 
-                                   List<String> columnKeys, int startRow, int startCol) {
-        int currentRow = startRow;
+    private void printVerticalData(Sheet sheet, Sheet templateSheet, int templateRowIndex,
+                                   List<Map<String, Object>> data, List<String> columnKeys, 
+                                   int startRow, int startCol) {
+        if (data == null || data.isEmpty()) {
+            return;
+        }
         
+        int rowsToInsert = data.size();
+        
+        // Сдвигаем существующие строки вниз, чтобы освободить место
+        ExcelUtils.shiftRowsDown(sheet, startRow, rowsToInsert);
+        
+        // Копируем строки-шаблоны со стилями
+        if (templateSheet != null && templateRowIndex >= 0) {
+            ExcelUtils.copyTemplateRows(templateSheet, sheet, templateRowIndex, startRow, rowsToInsert);
+        }
+        
+        // Заполняем данными
+        int currentRow = startRow;
         for (Map<String, Object> rowData : data) {
             for (int i = 0; i < columnKeys.size(); i++) {
                 String key = columnKeys.get(i);
@@ -261,16 +326,36 @@ public class ExcelReportService {
 
     /**
      * Печать одной вертикальной таблицы
+     * Теперь поддерживает копирование стилей из строки-шаблона и вставку строк
+     * 
+     * @param sheet целевой лист
+     * @param templateSheet лист с шаблонами (может быть null)
+     * @param templateRowIndex индекс строки-шаблона (из Templates листа)
+     * @param data данные для заполнения
+     * @param columnKeys ключи колонок
+     * @param startRow начальная строка
+     * @param startCol начальная колонка
      * @return количество использованных строк
      */
-    private int printVerticalTable(Sheet sheet, List<Map<String, Object>> data, 
-                                   List<String> columnKeys, int startRow, int startCol) {
+    private int printVerticalTable(Sheet sheet, Sheet templateSheet, int templateRowIndex,
+                                   List<Map<String, Object>> data, List<String> columnKeys, 
+                                   int startRow, int startCol) {
         if (data == null || data.isEmpty()) {
             return 0;
         }
         
-        int currentRow = startRow;
+        int rowsToInsert = data.size();
         
+        // Сдвигаем существующие строки вниз, чтобы освободить место
+        ExcelUtils.shiftRowsDown(sheet, startRow, rowsToInsert);
+        
+        // Копируем строки-шаблоны со стилями
+        if (templateSheet != null && templateRowIndex >= 0) {
+            ExcelUtils.copyTemplateRows(templateSheet, sheet, templateRowIndex, startRow, rowsToInsert);
+        }
+        
+        // Заполняем данными
+        int currentRow = startRow;
         for (Map<String, Object> rowData : data) {
             for (int i = 0; i < columnKeys.size(); i++) {
                 String key = columnKeys.get(i);
@@ -468,8 +553,15 @@ public class ExcelReportService {
                         startCol = currentCol;
                     }
                     
+                    // Получаем индекс строки-шаблона для вертикальных таблиц
+                    int templateRowIndex = -1;
+                    if (templateSheet != null && table.getRowRangeName() != null) {
+                        templateRowIndex = ExcelUtils.getTemplateRowIndex(workbook, table.getRowRangeName());
+                    }
+                    
                     // Печатаем вертикальную таблицу
-                    int rowsUsed = printVerticalTable(workSheet, table.getData(), table.getColumnKeys(), startRow, startCol);
+                    int rowsUsed = printVerticalTable(workSheet, templateSheet, templateRowIndex, 
+                                                      table.getData(), table.getColumnKeys(), startRow, startCol);
                     
                     // Добавляем sum ячейку если нужно
                     if (table.isIncludeSumCell()) {
